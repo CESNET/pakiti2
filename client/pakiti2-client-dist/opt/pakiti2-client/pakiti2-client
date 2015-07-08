@@ -244,6 +244,12 @@ else
   TYPE=""
   SITE=""
 
+  # If hostname is empty, return comma separated machine IP's
+  if [ "${REPHOST}" = ""  ] || [ "${REPHOST}" = "hostname: Name or service not known" ]; then
+	REPHOST="$(ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1')"
+	REPHOST=$(echo $REPHOST | sed 's/ /, /g')
+  fi
+
   # If site variable is set, then us it
   if [ "X${SITE_NAME}" != "X" ]; then
     SITE=${SITE_NAME}
