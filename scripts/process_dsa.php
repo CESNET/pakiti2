@@ -2,7 +2,7 @@
 <?php
 
 include_once("../config/config.php");
-include_once("../include/functions-dan.php");
+include_once("../include/functions-debian.php");
 include_once("../include/mysql_connect.php");
 
 /*
@@ -58,14 +58,15 @@ while ($line = fgets(STDIN)) {
         $list = preg_split("/\s+/", $matches[3]);
         $package_version = $list[0];
         if ($package_version == "<not-affected>" ||
-                $package_version == "<unfixed>") {
+                $package_version == "<unfixed>" ||
+                $package_version == "<end-of-life>") {
             continue;
         }
 
         /* see deb-version(5) for version number format */
         $ret = preg_match('/^[\.+-:~A-Za-z0-9]+$/', $package_version);
         if ($ret !== 1)
-            die ("Format error at line " . $num);
+            die ("Format error (wrong version format) at line " . $num);
 
         /* rsplit('-', $package_version): */
         $ver = explode('-', $package_version);
@@ -93,7 +94,7 @@ while ($line = fgets(STDIN)) {
         continue;
     }
 
-    die ("Format error at line " . $num);
+    die ("Format error (unrecognized line) at line " . $num);
 }
 
 if (!empty($rec)) {

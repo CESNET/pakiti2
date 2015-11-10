@@ -1,7 +1,7 @@
 #!/usr/bin/php
 <?php
 #include_once("../config/config.php");
-$config = '/etc/pakiti/pakiti-server-egi.conf';
+$config = '/etc/pakiti2/pakiti2-server-egi.conf';
 include_once("../include/mysql_connect.php");
 include_once("../config/admins_acl.php");
 
@@ -189,4 +189,3 @@ if ($err != "") {
         print $err;
 }
 ?>
-

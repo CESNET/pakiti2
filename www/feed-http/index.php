@@ -1,4 +1,5 @@
 <?php
+
 # Copyright (c) 2008-2009, Grid PP, CERN and CESNET. All rights reserved.
 # 
 # Redistribution and use in source and binary forms, with or
@@ -27,9 +28,9 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE. 
 
-include("../../config/config.php");
-include("../../include/functions.php");
-include_once("../../include/mysql_connect.php");
+include '../../config/config.php';
+include '../../include/functions.php';
+include_once '../../include/mysql_connect.php';
 
 $starttime = start_time();
 
@@ -38,74 +39,97 @@ $starttime = start_time();
 
 openlog("[PAKITI]", LOG_PID, LOG_LOCAL0);
 
-###########################################
-# Getting POST variables
-if (isset($_POST["h"]))
-	$host = mysql_real_escape_string(htmlspecialchars($_POST["h"]));
-else if (isset($_POST["host"]))
-	$host = mysql_real_escape_string(htmlspecialchars($_POST["host"]));
-else $host = "unknown";
-
-if (isset($_POST["a"]))
-	$admin = mysql_real_escape_string(trim(htmlspecialchars($_POST["a"])));
-else if (isset($_POST["tag"]))
-	$admin = mysql_real_escape_string(trim(htmlspecialchars($_POST["tag"])));
-else $admin = "unknown";
-
-if (isset($_POST["k"]))
-	$kernel = mysql_real_escape_string(htmlspecialchars($_POST["k"]));
-else if (isset($_POST["kernel"]))
-	$kernel = mysql_real_escape_string(htmlspecialchars($_POST["kernel"]));
-else $kernel = "unknown";
-
-if (isset($_POST["p"]))
-	$pkgs = htmlspecialchars($_POST["p"]);
-else if (isset($_POST["pkgs"]))
-	$pkgs = htmlspecialchars($_POST["pkgs"]);
-else if (isset($_POST["rpms"]))
-	$pkgs = htmlspecialchars($_POST["rpms"]);
-else $pkgs = "unknown";
-
 if (isset($_POST["v"]))
 	$version = mysql_real_escape_string(trim(htmlspecialchars($_POST["v"])));
 else if (isset($_POST["version"]))
 	$version = mysql_real_escape_string(trim(htmlspecialchars($_POST["version"])));
-else $version = "unknown";
+else $version = "cern_1"; // If no version is provided then set version to CERN client
 
-if (isset($_POST["o"])) 
-	$os = mysql_real_escape_string(htmlspecialchars($_POST["o"]));
-else if (isset($_POST["os"]))
-	$os = mysql_real_escape_string(htmlspecialchars($_POST["os"]));
-else $os = "unknown";
+# Detect type of report, if it is not Pakiti genuine then convert it
+switch ($version) {
+	case "cern_1":
+		# Example of the report:
+		##
+		#ip: 128.142.145.197
+		#ts: 1412031358
+		#arch: x86_64
+		#host: dpm-puppet01.cern.ch dpm-puppet01.ipv6.cern.ch
+		#kernel: 2.6.32-431.3.1.el6.x86_64
+		#packager: rpm
+		#site: MYSITE
+		#system: Scientific Linux CERN SLC release 6.5 (Carbon)
+		##
+		#CERN-CA-certs 0:20140325-2.slc6 noarch
 
-if (isset($_POST["m"])) 
-	$arch = mysql_real_escape_string(htmlspecialchars($_POST["m"]));
-else if (isset($_POST["arch"]))
-	$arch = mysql_real_escape_string(htmlspecialchars($_POST["arch"]));
-else $arch = "unknown";
+		# Map onto the variables
 
-if (isset($_POST["s"])) 
-	$site = mysql_real_escape_string(htmlspecialchars($_POST["s"]));
-else if (isset($_POST["site"]))
-	$site = mysql_real_escape_string(htmlspecialchars($_POST["site"]));
-else $site = "unknown";
-if (empty($site)) $site = "unknown";
+		# Decrypt the report
+		$data = file_get_contents('php://input');
+		$tmpFileIn = tempnam("/dev/shm/", "cern_IN_");
+		# Store encrypted report into the file and the use openssl smime to decode it
+		if (file_put_contents($tmpFileIn, $data) === FALSE) {
+			unlink($tmpFileIn);
+			syslog(LOG_ERR, "Cannot write to the file '$tmpFileIn' during decoding cern_1 report");
+		}
+		$tmpFileOut = tempnam("/dev/shm/", "cern_OUT_");
+		if (system("openssl smime -decrypt -binary -inform DER -inkey ". $cern_report_decryption_key ." -in $tmpFileIn -out $tmpFileOut") === FALSE) {
+			unlink($tmpFileOut);
+			unlink($tmpFileIn);
+			syslog(LOG_ERR, "Cannot run openssl smime on the file '$tmpFileIn'");
+		}
+		# Clean up
+		unlink($tmpFileIn);
 
-if (isset($_POST["t"])) 
-	$os_type = mysql_real_escape_string(htmlspecialchars($_POST["t"]));
-else if (isset($_POST["type"]))
-	$os_type = mysql_real_escape_string(htmlspecialchars($_POST["type"]));
-else $os_type = "rpm";
+		$handle = fopen("$tmpFileOut", "r");
+		$lineNumber = 0;
+		if ($handle) {
+		    while (($line = fgets($handle)) !== false) {
+			$lineNumber++;
+			if ($lineNumber == 1 && trim($line) != "#") {
+				unlink($tmpFileOut);
+				syslog(LOG_ERR, "Bad format of the report, it should start with # '$tmpFileOut'");
+			}
+			if ($lineNumber > 1 && trim($line) == "#") {
+				# We have reached end of header
+				break;
+			}
+			# Get field name and value separatedly  
+			$fields = explode(':', $line, 2);
+			switch(trim($fields[0])) {
+				case "arch": $arch = trim($fields[1]); break;
+				# Get only the first hostname in the list, CERN sends all possible hostnames of the host
+				case "host": $host = trim($fields[1]); break;
+				case "kernel": $kernel = trim($fields[1]); break;
+				case "packager": $os_type = trim($fields[1]); break;
+				case "site": $site = trim($fields[1]); break;
+				case "system": $os = trim($fields[1]); break;
+			}
+		    }
 
-if (isset($_POST["r"])) 
-	$report = mysql_real_escape_string(htmlspecialchars($_POST["r"]));
-else if (isset($_POST["report"]))
-	$report = mysql_real_escape_string(htmlspecialchars($_POST["report"]));
-else $report = 0;
-if (isset($_POST["proxy"])) 
-	$proxy = mysql_real_escape_string(htmlspecialchars($_POST["proxy"]));
-else $proxy = 0;
+		    # Set admin and proxy
+		    $admin = "WLCG";
+		    $proxy = 0;
+		   
+		    $pkgs = "";
+		    while (($line = fgets($handle)) !== false) {
+			if ($line == "#" || empty($line)) continue;
+			# Store packages into the internal variable
+			$pkgs .= $line;
+		    }
+		} else {
+			// error opening the file.
+			unlink($tmpFileOut);
+			syslog(LOG_ERR, "Cannot open file with the report '$tmpFileOut'");
+		}
+		fclose($handle);
+		unlink($tmpFileOut);
+		break;
 
+	default:
+		print "Unsupported version!";
+		exit;
+
+}
 ###########################################
 # Checking incoming connexion
 
@@ -161,6 +185,10 @@ if ($pkgs) {
 		case "4": 
 			$pkgs = str_replace ("\\", "", $pkgs);
 			preg_match_all("|^'(.*?)' '(.*?)' '(.*?)' '(.*?)'$|sim",$pkgs,$items);
+			break;
+		case "cern_1":
+			#CERN-CA-certs 0:20140325-2.slc6 noarch
+			preg_match_all("|^(.*?)[\s]+(.*?)-(.*?)[\s]+(.*?)$|sim",$pkgs,$items);
 			break;
 	}
 }
@@ -503,10 +531,6 @@ for ($i = 0; $i <= $count_items; $i++) {
 	$act_version_id = NULL;
 
 	# Data from report
-	if (empty($items[1][$i])) {
-	# Skip empty entries
-		continue;
-	}
 	$r_pkg_name = mysql_real_escape_string($items[1][$i]);
 	$r_pkg_version = mysql_real_escape_string($items[2][$i]);
 	$r_pkg_rel = mysql_real_escape_string($items[3][$i]);
@@ -723,9 +747,9 @@ if (!mysql_query($sql)) {
 }
 mysql_close($link);
 if ($asynchronous_mode == 1) {
-	syslog(LOG_INFO, "Information recorded for $host in time: " . end_time($starttime));
+	syslog(LOG_INFO, "Information recorded for $host from $version in time: " . end_time($starttime));
 } else {
-	syslog(LOG_INFO, "Information recorded for $host in time: " . end_time($starttime) . " (Sec: $num_of_sec, Others: $num_of_others, CVEs: $num_of_cves)");
+	syslog(LOG_INFO, "Information recorded for $host from $version in time: " . end_time($starttime) . " (Sec: $num_of_sec, Others: $num_of_others, CVEs: $num_of_cves)");
 }
 closelog();
 
