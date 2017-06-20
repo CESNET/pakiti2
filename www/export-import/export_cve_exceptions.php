@@ -39,7 +39,7 @@ if (!$res = mysql_query($sql)) {
 		$pkg_arch = $row[5];
                 $enabled = $row[6];
                 $tag = $row[7];
-		$xml .= "<cveException><cveName>$cve_name</cveName><reason>$reason</reason><pkg><name>$pkg_name</name><version>$pkg_version</version><release>$pkg_rel</release><arch>$pkg_arch</arch><type></type></pkg><enabled>$enabled</enabled><tag><name>$tag</name><description></description></tag><osGroup><name></name></osGroup></cveException>";
+		$xml .= "<cveException><cveName>$cve_name</cveName><reason>$reason</reason><pkg><name>$pkg_name</name><version>$pkg_version</version><release>$pkg_rel</release><arch>$pkg_arch</arch></pkg></cveException>";
 	}
 }
 
