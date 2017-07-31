@@ -7,6 +7,7 @@ include("../../include/mysql_connect.php");
 #    <cveException>
 #        <cveName>...</cveName>
 #        <reason>...</reason>
+#        <modifier>...</modifier>
 #        <pkg>
 #            <name>...</name>
 #            <version>...</version>
@@ -39,7 +40,7 @@ if (!$res = mysql_query($sql)) {
 		$pkg_arch = $row[5];
                 $enabled = $row[6];
                 $tag = $row[7];
-		$xml .= "<cveException><cveName>$cve_name</cveName><reason>$reason</reason><pkg><name>$pkg_name</name><version>$pkg_version</version><release>$pkg_rel</release><arch>$pkg_arch</arch></pkg></cveException>";
+		$xml .= "<cveException><cveName>$cve_name</cveName><reason>$reason</reason><modifier>pakiti.egi.eu</modifier><pkg><name>$pkg_name</name><version>$pkg_version</version><release>$pkg_rel</release><arch>$pkg_arch</arch></pkg></cveException>";
 	}
 }
 
