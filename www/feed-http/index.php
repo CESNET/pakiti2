@@ -48,6 +48,9 @@ else $version = "cern_1"; // If no version is provided then set version to CERN 
 # Detect type of report, if it is not Pakiti genuine then convert it
 switch ($version) {
 	case "cern_1":
+		/*
+		 * We should rather call parse_report_v5 here ...
+		 */
 		# Example of the report:
 		##
 		#ip: 128.142.145.197

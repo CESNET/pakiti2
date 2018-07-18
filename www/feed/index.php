@@ -38,73 +38,162 @@ $starttime = start_time();
 
 openlog("[PAKITI]", LOG_PID, LOG_LOCAL0);
 
+function parse_report_v5($input)
+{
+	# Example of the report:
+	##
+	#ip: 128.142.145.197
+	#ts: 1412031358
+	#arch: x86_64
+	#host: dpm-puppet01.cern.ch dpm-puppet01.ipv6.cern.ch
+	#kernel: 2.6.32-431.3.1.el6.x86_64
+	#packager: rpm
+	#site: MYSITE
+	#system: Scientific Linux CERN SLC release 6.5 (Carbon)
+	##
+	#CERN-CA-certs 0:20140325-2.slc6 noarch
+
+	# Map onto the variables
+
+	$handle = fopen($input, "r");
+        if ($handle === false) {
+		syslog(LOG_ERR, "Cannot open file with the report");
+		exit;
+	}
+	$site = "unknown";
+
+	$lineNumber = 0;
+	# Parse the header first
+	while (($line = fgets($handle)) !== false) {
+		$line = trim($line);
+		$lineNumber++;
+		if ($lineNumber == 1) {
+			if ($line != "#") {
+				syslog(LOG_ERR, "Bad format of the report, it should start with #");
+				exit;
+			}
+			continue;
+		}
+		if ($lineNumber > 1 && $line == "#") {
+			break;
+		}
+		$fields = explode(':', $line, 2);
+		if (count($fields) != 2) {
+			syslog(LOG_ERR, "Wrong report format: '$line' ($lineNumber)");
+			exit;
+		}
+		switch(trim($fields[0])) {
+			case "arch": $arch = trim($fields[1]); break;
+			# Get only the first hostname in the list, CERN sends all possible hostnames of the host
+			case "host": $host = trim($fields[1]); break;
+			case "kernel": $kernel = trim($fields[1]); break;
+			case "packager": $os_type = trim($fields[1]); break;
+			case "system": $os = trim($fields[1]); break;
+			case "site": $site = trim($fields[1]); break;
+		}
+	}
+	foreach(array('arch', 'host', 'kernel', 'os_type', 'os') as $var) {
+		if (!isset(${$var})) {
+			syslog(LOG_ERR, "Mandatory field $var is missing from report");
+			exit;
+		}
+        }
+
+	# Proceed to parsing the body
+	$pkgs = "";
+	while (($line = fgets($handle)) !== false) {
+		if ($line == "#" || empty($line)) continue;
+		$pkgs .= $line;
+	}
+        fclose($handle);
+
+	$admin = "WLCG";
+	$proxy = 0;
+	$version = 5;
+	$mode = (isset($_GET["mode"])) ? htmlspecialchars($_GET["mode"]) : '';
+	# we break the report-only semantics here since the report will be stored.
+	$report = ($mode == "store-and-report" || $mode == "report-only") ? 1 : 0;
+
+	return(array($host, $admin, $kernel, $pkgs, $version, $os, $arch, $site, $os_type, $report, $proxy));
+}
+
+function parse_report_v4()
+{
 ###########################################
 # Getting POST variables
-if (isset($_POST["h"]))
-	$host = mysql_real_escape_string(htmlspecialchars($_POST["h"]));
-else if (isset($_POST["host"]))
-	$host = mysql_real_escape_string(htmlspecialchars($_POST["host"]));
-else $host = "unknown";
+	if (isset($_POST["h"]))
+		$host = mysql_real_escape_string(htmlspecialchars($_POST["h"]));
+	else if (isset($_POST["host"]))
+		$host = mysql_real_escape_string(htmlspecialchars($_POST["host"]));
+	else $host = "unknown";
 
-if (isset($_POST["a"]))
-	$admin = mysql_real_escape_string(trim(htmlspecialchars($_POST["a"])));
-else if (isset($_POST["tag"]))
-	$admin = mysql_real_escape_string(trim(htmlspecialchars($_POST["tag"])));
-else $admin = "unknown";
+	if (isset($_POST["a"]))
+		$admin = mysql_real_escape_string(trim(htmlspecialchars($_POST["a"])));
+	else if (isset($_POST["tag"]))
+		$admin = mysql_real_escape_string(trim(htmlspecialchars($_POST["tag"])));
+	else $admin = "unknown";
 
-if (isset($_POST["k"]))
-	$kernel = mysql_real_escape_string(htmlspecialchars($_POST["k"]));
-else if (isset($_POST["kernel"]))
-	$kernel = mysql_real_escape_string(htmlspecialchars($_POST["kernel"]));
-else $kernel = "unknown";
+	if (isset($_POST["k"]))
+		$kernel = mysql_real_escape_string(htmlspecialchars($_POST["k"]));
+	else if (isset($_POST["kernel"]))
+		$kernel = mysql_real_escape_string(htmlspecialchars($_POST["kernel"]));
+	else $kernel = "unknown";
 
-if (isset($_POST["p"]))
-	$pkgs = htmlspecialchars($_POST["p"]);
-else if (isset($_POST["pkgs"]))
-	$pkgs = htmlspecialchars($_POST["pkgs"]);
-else if (isset($_POST["rpms"]))
-	$pkgs = htmlspecialchars($_POST["rpms"]);
-else $pkgs = "unknown";
+	if (isset($_POST["p"]))
+		$pkgs = htmlspecialchars($_POST["p"]);
+	else if (isset($_POST["pkgs"]))
+		$pkgs = htmlspecialchars($_POST["pkgs"]);
+	else if (isset($_POST["rpms"]))
+		$pkgs = htmlspecialchars($_POST["rpms"]);
+	else $pkgs = "unknown";
 
-if (isset($_POST["v"]))
-	$version = mysql_real_escape_string(trim(htmlspecialchars($_POST["v"])));
-else if (isset($_POST["version"]))
-	$version = mysql_real_escape_string(trim(htmlspecialchars($_POST["version"])));
-else $version = "unknown";
+	if (isset($_POST["v"]))
+		$version = mysql_real_escape_string(trim(htmlspecialchars($_POST["v"])));
+	else if (isset($_POST["version"]))
+		$version = mysql_real_escape_string(trim(htmlspecialchars($_POST["version"])));
+	else $version = "unknown";
 
-if (isset($_POST["o"])) 
-	$os = mysql_real_escape_string(htmlspecialchars($_POST["o"]));
-else if (isset($_POST["os"]))
-	$os = mysql_real_escape_string(htmlspecialchars($_POST["os"]));
-else $os = "unknown";
+	if (isset($_POST["o"])) 
+		$os = mysql_real_escape_string(htmlspecialchars($_POST["o"]));
+	else if (isset($_POST["os"]))
+		$os = mysql_real_escape_string(htmlspecialchars($_POST["os"]));
+	else $os = "unknown";
 
-if (isset($_POST["m"])) 
-	$arch = mysql_real_escape_string(htmlspecialchars($_POST["m"]));
-else if (isset($_POST["arch"]))
-	$arch = mysql_real_escape_string(htmlspecialchars($_POST["arch"]));
-else $arch = "unknown";
+	if (isset($_POST["m"])) 
+		$arch = mysql_real_escape_string(htmlspecialchars($_POST["m"]));
+	else if (isset($_POST["arch"]))
+		$arch = mysql_real_escape_string(htmlspecialchars($_POST["arch"]));
+	else $arch = "unknown";
 
-if (isset($_POST["s"])) 
-	$site = mysql_real_escape_string(htmlspecialchars($_POST["s"]));
-else if (isset($_POST["site"]))
-	$site = mysql_real_escape_string(htmlspecialchars($_POST["site"]));
-else $site = "unknown";
-if (empty($site)) $site = "unknown";
+	if (isset($_POST["s"])) 
+		$site = mysql_real_escape_string(htmlspecialchars($_POST["s"]));
+	else if (isset($_POST["site"]))
+		$site = mysql_real_escape_string(htmlspecialchars($_POST["site"]));
+	else $site = "unknown";
+	if (empty($site)) $site = "unknown";
 
-if (isset($_POST["t"])) 
-	$os_type = mysql_real_escape_string(htmlspecialchars($_POST["t"]));
-else if (isset($_POST["type"]))
-	$os_type = mysql_real_escape_string(htmlspecialchars($_POST["type"]));
-else $os_type = "rpm";
+	if (isset($_POST["t"])) 
+		$os_type = mysql_real_escape_string(htmlspecialchars($_POST["t"]));
+	else if (isset($_POST["type"]))
+		$os_type = mysql_real_escape_string(htmlspecialchars($_POST["type"]));
+	else $os_type = "rpm";
 
-if (isset($_POST["r"])) 
-	$report = mysql_real_escape_string(htmlspecialchars($_POST["r"]));
-else if (isset($_POST["report"]))
-	$report = mysql_real_escape_string(htmlspecialchars($_POST["report"]));
-else $report = 0;
-if (isset($_POST["proxy"])) 
-	$proxy = mysql_real_escape_string(htmlspecialchars($_POST["proxy"]));
-else $proxy = 0;
+	if (isset($_POST["r"])) 
+		$report = mysql_real_escape_string(htmlspecialchars($_POST["r"]));
+	else if (isset($_POST["report"]))
+		$report = mysql_real_escape_string(htmlspecialchars($_POST["report"]));
+	else $report = 0;
+
+	if (isset($_POST["proxy"])) 
+		$proxy = mysql_real_escape_string(htmlspecialchars($_POST["proxy"]));
+	else $proxy = 0;
+
+	return(array($host, $admin, $kernel, $pkgs, $version, $os, $arch, $site, $os_type, $report, $proxy));
+}
+
+$protocol_version = (isset($_GET["protocol"])) ? htmlspecialchars($_GET["protocol"]) : 4;
+list ($host, $admin, $kernel, $pkgs, $version, $os, $arch, $site, $os_type, $report, $proxy) =
+	($protocol_version == 5) ? parse_report_v5("php://input") : parse_report_v4();
 
 ###########################################
 # Checking incoming connexion
@@ -161,6 +250,10 @@ if ($pkgs) {
 		case "4": 
 			$pkgs = str_replace ("\\", "", $pkgs);
 			preg_match_all("|^'(.*?)' '(.*?)' '(.*?)' '(.*?)'$|sim",$pkgs,$items);
+			break;
+		case "5":
+			# XXX This doesn't work well for Debian (as it doesn't use '-' do delimite version and release
+			preg_match_all("|^(.*?)[\s]+(.*?)-(.*?)[\s]+(.*?)$|sim",$pkgs,$items);
 			break;
 	}
 }
