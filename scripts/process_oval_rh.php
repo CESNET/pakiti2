@@ -192,6 +192,9 @@ while ($row = mysql_fetch_row($repositories)) {
 		} else $res['severity'] = "n/a";
 
 		$res['title'] = rtrim($entry->getElementsByTagName('title')->item(0)->nodeValue);
+		/* This is a hack to recognize the related architecture, supposing that only ARM should be disregarded */
+		if (strpos($res['title'], 'aarch64') !== False)
+			continue;
 		$res['ref_url'] = $entry->getElementsByTagName('reference')->item(0)->getAttribute('ref_url');
 
 		// Get associated CVEs
